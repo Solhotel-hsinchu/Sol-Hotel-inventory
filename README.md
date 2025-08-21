@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>庫存系統與月曆互動版</title>
+<title>庫存系統與彩色月曆</title>
 <style>
     body {
         font-family: Arial, sans-serif;
@@ -15,7 +15,7 @@
     h1 { margin-bottom: 10px; }
     .inventory, .calendar { margin: 20px auto; }
     table { margin: 0 auto; border-collapse: collapse; }
-    td, th { border: 1px solid #555; padding: 8px 12px; width: 50px; height: 50px; }
+    td, th { border: 1px solid #555; padding: 5px; width: 60px; height: 60px; vertical-align: top; position: relative; }
     th { background-color: #ddd; }
     .product-btn, #restockBtn {
         margin: 5px; padding: 10px 20px; cursor: pointer;
@@ -29,6 +29,20 @@
     .low-stock { background-color: #ffeb3b; }
     .out-stock { background-color: #f44336; color: white; }
     .today { background-color: #2196F3; color: white; font-weight: bold; }
+    #log { margin-top: 10px; font-weight: bold; min-height: 24px; }
+    .tag {
+        display: inline-block;
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        margin: 1px;
+    }
+    .A { background-color: #f44336; }  /* 產品A紅 */
+    .B { background-color: #ff9800; }  /* 產品B橙 */
+    .C { background-color: #ffeb3b; }  /* 產品C黃 */
+    .D { background-color: #4CAF50; }  /* 產品D綠 */
+    .E { background-color: #2196F3; }  /* 產品E藍 */
+    td span { font-size: 10px; display: block; margin-top: 2px; }
 </style>
 </head>
 <body>
@@ -44,18 +58,14 @@
 
 <h1>本月月曆</h1>
 <div class="calendar" id="calendar"></div>
+<div id="log"></div>
 
 <script>
 // 初始化庫存
-let products = {
-    "產品A": 8,
-    "產品B": 8,
-    "產品C": 8,
-    "產品D": 8,
-    "產品E": 8
-};
+let products = { "產品A":8, "產品B":8, "產品C":8, "產品D":8, "產品E":8 };
+let usageLog = {}; // 每日期庫存使用
 
-let usageLog = {}; // 記錄每日期庫存使用
+const productColors = { "產品A":"A","產品B":"B","產品C":"C","產品D":"D","產品E":"E" };
 
 // 更新庫存表格
 function updateInventory() {
@@ -68,18 +78,12 @@ function updateInventory() {
         nameCell.innerText = p;
         stockCell.innerText = products[p];
 
-        if (products[p] === 0) {
-            stockCell.className = "out-stock";
-        } else if (products[p] <= 3) {
-            stockCell.className = "low-stock";
-        } else {
-            stockCell.className = "";
-        }
+        if (products[p] === 0) stockCell.className = "out-stock";
+        else if (products[p] <= 3) stockCell.className = "low-stock";
+        else stockCell.className = "";
     }
 
-    // 更新按鈕狀態
-    const btns = document.querySelectorAll(".product-btn");
-    btns.forEach(btn => {
+    document.querySelectorAll(".product-btn").forEach(btn => {
         const prod = btn.dataset.product;
         btn.disabled = products[prod] === 0;
     });
@@ -108,7 +112,8 @@ function useProduct(product) {
         if (!usageLog[todayStr]) usageLog[todayStr] = [];
         usageLog[todayStr].push(product);
 
-        showCalendar(); // 更新月曆顯示使用紀錄
+        showCalendar();
+        showLog(todayStr);
     }
 }
 
@@ -117,6 +122,7 @@ function restock() {
     for (let p in products) products[p] = 8;
     updateInventory();
     showCalendar();
+    document.getElementById("log").innerText = "";
 }
 
 // 顯示月曆
@@ -129,24 +135,35 @@ function showCalendar() {
     const lastDate = new Date(year, month + 1, 0).getDate();
 
     let table = "<table><tr>";
-    const weekDays = ["日","一","二","三","四","五","六"];
-    weekDays.forEach(day => table += `<th>${day}</th>`);
-    table += "</tr><tr>";
+    ["日","一","二","三","四","五","六"].forEach(d=>table+=`<th>${d}</th>`);
+    table+="</tr><tr>";
 
-    for (let i = 0; i < firstDay; i++) table += "<td></td>";
+    for(let i=0;i<firstDay;i++) table+="<td></td>";
 
-    for (let date = 1; date <= lastDate; date++) {
+    for(let date=1; date<=lastDate; date++){
         const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(date).padStart(2,'0')}`;
-        let classes = "";
-        if (date === now.getDate()) classes += "today";
-        if (usageLog[dateStr]) classes += " low-stock"; // 標示有使用紀錄
-
-        table += `<td class="${classes}" title="${usageLog[dateStr]?usageLog[dateStr].join(', '):''}">${date}</td>`;
-        if ((date + firstDay) % 7 === 0) table += "</tr><tr>";
+        let classes = date===now.getDate() ? "today" : "";
+        let tags = "";
+        if(usageLog[dateStr]){
+            usageLog[dateStr].forEach(p=>{
+                tags += `<span class="tag ${productColors[p]}" title="${p}"></span>`;
+            });
+        }
+        table += `<td class="${classes}" onclick="showLog('${dateStr}')" title="${usageLog[dateStr]?usageLog[dateStr].join(', '):''}">${date}${tags}</td>`;
+        if((date + firstDay) % 7 === 0) table+="</tr><tr>";
     }
 
-    table += "</tr></table>";
+    table+="</tr></table>";
     calDiv.innerHTML = table;
+}
+
+// 顯示使用紀錄
+function showLog(dateStr){
+    const logDiv = document.getElementById("log");
+    if(usageLog[dateStr] && usageLog[dateStr].length>0)
+        logDiv.innerText = `${dateStr} 使用產品: ${usageLog[dateStr].join(', ')}`;
+    else
+        logDiv.innerText = `${dateStr} 沒有使用產品`;
 }
 
 // 初始化
