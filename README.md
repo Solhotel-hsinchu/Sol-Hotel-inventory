@@ -2,40 +2,29 @@
 <html lang="zh-Hant">
 <head>
 <meta charset="UTF-8">
-<title>跨日期庫存系統</title>
+<title>跨日期固定庫存系統（可修改每日庫存）</title>
 <style>
-body { font-family: Arial, sans-serif; background: #f7f7f7; margin: 20px; }
+body{font-family:Arial,sans-serif;background:#f7f7f7;margin:20px;}
 h1,h2{text-align:center;}
 .calendar{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;margin-bottom:20px;}
 .day{background:#fff;padding:10px;text-align:center;cursor:pointer;border:1px solid #ddd;border-radius:6px;}
 .day:hover{background:#d0e6ff;}
 .selected{background:#4caf50 !important;color:white;font-weight:bold;}
 .inventory,.summary{margin-top:20px;padding:15px;background:white;border-radius:8px;box-shadow:0 0 6px rgba(0,0,0,0.1);}
-input,button,select{padding:6px;margin:3px;}
 li{margin:4px 0;}
 .out{color:red;font-weight:bold;}
 .download-btn{display:block;margin:15px auto 0;padding:8px 16px;background:#4caf50;color:white;border:none;border-radius:6px;cursor:pointer;}
 .download-btn:hover{background:#45a049;}
+select,button,input{padding:4px;margin-left:5px;width:80px;}
+input.qtyInput{width:50px;}
 </style>
 </head>
 <body>
-<h1>📅 跨日期庫存系統</h1>
+<h1>📅 跨日期固定庫存系統</h1>
 <div id="calendar" class="calendar"></div>
 
 <div class="inventory">
 <h2 id="selectedDateTitle"></h2>
-<div id="inputContainer">
-<script>
-for(let i=1;i<=10;i++){
-document.write(`
-<input type="text" id="item${i}" placeholder="品項${i}">
-<input type="number" id="qty${i}" placeholder="數量" min="1">
-<input type="text" id="code${i}" placeholder="四碼代號"><br>
-`);
-}
-</script>
-<button onclick="addItems()">新增品項</button>
-</div>
 <ul id="inventoryList"></ul>
 </div>
 
@@ -50,6 +39,27 @@ const calendarEl=document.getElementById("calendar");
 const inventoryList=document.getElementById("inventoryList");
 const selectedDateTitle=document.getElementById("selectedDateTitle");
 let selectedDate="2025-09-01";
+
+const fixedItems=[
+  {name:"加床", qty:13},
+  {name:"嬰兒床", qty:8},
+  {name:"嬰兒澡盆", qty:11},
+  {name:"床圍", qty:3},
+  {name:"消毒鍋", qty:4}
+];
+
+// 初始化每日庫存
+function initDailyInventory(date){
+  let data=JSON.parse(localStorage.getItem("inventory"))||{};
+  if(!data[date]){
+    data[date]=fixedItems.map(item=>{
+      let code=Math.floor(1000+Math.random()*9000).toString();
+      return {name:item.name, qty:item.qty, code:code};
+    });
+    localStorage.setItem("inventory",JSON.stringify(data));
+  }
+  return data;
+}
 
 function renderCalendar(){
   const start=new Date("2025-09-01");
@@ -70,56 +80,57 @@ function renderCalendar(){
 
 function loadInventory(){
   selectedDateTitle.innerText=`📦 ${selectedDate} 的庫存`;
+  let data=initDailyInventory(selectedDate);
+  let items=data[selectedDate];
   inventoryList.innerHTML="";
-  let data=JSON.parse(localStorage.getItem("inventory"))||{};
-  let items=data[selectedDate]||[];
   items.forEach((item,index)=>{
     let li=document.createElement("li");
     li.innerHTML=`
-      ${item.name} - 剩餘 ${item.qty} - 代號 ${item.code} 
-      ${item.qty>0?`<button onclick="useItem(${index})">使用1</button>`:'<span class="out">⚠️ 庫存不足</span>'}
+      ${item.name} - 剩餘 
+      <input type="number" class="qtyInput" id="qty${index}" value="${item.qty}" min="0">
+      - 代號 ${item.code} 
+      ${item.qty>0?
+        `<select id="sel${index}">
+          ${getAvailableCodes(item.name).map(c=>`<option value="${c}">${c}</option>`).join("")}
+        </select>
+        <button onclick="useSelected(${index})">使用1</button>`:
+        '<span class="out">⚠️ 庫存不足</span>'}
+      <button onclick="updateQty(${index})">更新數量</button>
     `;
     inventoryList.appendChild(li);
   });
 }
 
-function addItems(){
+// 取得當天該品項可用代號
+function getAvailableCodes(name){
   let data=JSON.parse(localStorage.getItem("inventory"))||{};
-  if(!data[selectedDate]) data[selectedDate]=[];
-  for(let i=1;i<=10;i++){
-    let name=document.getElementById(`item${i}`).value.trim();
-    let qty=parseInt(document.getElementById(`qty${i}`).value);
-    let code=document.getElementById(`code${i}`).value.trim();
-    if(name&&qty>0&&code&&/^\d{4}$/.test(code)){
-      data[selectedDate].push({name,qty,code});
-      document.getElementById(`item${i}`).value="";
-      document.getElementById(`qty${i}`).value="";
-      document.getElementById(`code${i}`).value="";
-    }
-  }
+  return (data[selectedDate]||[]).filter(x=>x.name===name && x.qty>0).map(x=>x.code);
+}
+
+// 使用下拉選擇代號扣庫
+function useSelected(index){
+  let data=JSON.parse(localStorage.getItem("inventory"))||{};
+  let select=document.getElementById(`sel${index}`);
+  if(!select) return;
+  let code=select.value;
+  let item=data[selectedDate].find(x=>x.code===code);
+  if(item && item.qty>0) item.qty--;
   localStorage.setItem("inventory",JSON.stringify(data));
   loadInventory();
 }
 
-// 使用1功能，選擇代號扣庫
-function useItem(index){
+// 更新每日庫存數量
+function updateQty(index){
   let data=JSON.parse(localStorage.getItem("inventory"))||{};
-  if(!data[selectedDate]) return;
-  // 先找所有同品項的代號列表
-  const item=data[selectedDate][index];
-  let sameItems=data[selectedDate].filter(x=>x.name===item.name && x.qty>0);
-  if(sameItems.length>1){
-    let codeList=sameItems.map(x=>x.code);
-    let code=prompt(`請輸入代號使用1，選項: ${codeList.join(",")}`);
-    let target=sameItems.find(x=>x.code===code);
-    if(target) target.qty--;
-  } else if(sameItems.length===1){
-    sameItems[0].qty--;
-  }
+  let input=document.getElementById(`qty${index}`);
+  let val=parseInt(input.value);
+  if(isNaN(val)||val<0) return alert("請輸入正確數量");
+  data[selectedDate][index].qty=val;
   localStorage.setItem("inventory",JSON.stringify(data));
   loadInventory();
 }
 
+// 匯出 Excel
 function downloadExcel(){
   let data=JSON.parse(localStorage.getItem("inventory"))||{};
   let detailSheetData=[["日期","品項","數量","訂房代號"]];
@@ -128,9 +139,9 @@ function downloadExcel(){
       detailSheetData.push([date,item.name,item.qty,item.code]);
     });
   });
-  let wsDetail=XLSX.utils.aoa_to_sheet(detailSheetData);
+  let ws=XLSX.utils.aoa_to_sheet(detailSheetData);
   let wb=XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb,wsDetail,"每日明細");
+  XLSX.utils.book_append_sheet(wb,ws,"每日明細");
   XLSX.writeFile(wb,"庫存報表.xlsx");
 }
 
