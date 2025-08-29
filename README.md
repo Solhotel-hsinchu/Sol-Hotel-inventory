@@ -2,7 +2,7 @@
 <html lang="zh-Hant">
 <head>
 <meta charset="UTF-8">
-<title>每日代號表單化使用庫存系統</title>
+<title>每日代號表單化庫存系統</title>
 <style>
 body{font-family:Arial,sans-serif;background:#f7f7f7;margin:20px;}
 h1,h2{text-align:center;}
@@ -21,7 +21,7 @@ input,button{padding:4px;margin:2px;width:60px;}
 </style>
 </head>
 <body>
-<h1>📅 每日代號表單化使用庫存系統</h1>
+<h1>📅 每日代號表單化庫存系統</h1>
 <div id="calendar" class="calendar"></div>
 
 <div class="inventory">
@@ -29,7 +29,7 @@ input,button{padding:4px;margin:2px;width:60px;}
 
 <div>
 <label>訂房代號:</label>
-<input type="text" id="bookingCode" placeholder="四碼代號">
+<input type="text" id="bookingCode" placeholder="代號，如 FU/3045L4">
 </div>
 <div id="itemInputs"></div>
 <button onclick="useForm()">使用</button>
@@ -62,6 +62,7 @@ const fixedItems=[
   {name:"床圍", qty:3},
   {name:"消毒鍋", qty:4}
 ];
+const itemOrder=["加床","嬰兒床","嬰兒澡盆","床圍","消毒鍋"];
 
 // 初始化每日庫存
 function initDailyInventory(date){
@@ -117,15 +118,15 @@ function loadData(){
     inventoryList.appendChild(li);
   });
 
-  // 顯示使用明細
+  // 顯示使用明細（固定順序）
   let usage=JSON.parse(localStorage.getItem("usage"))||{};
   let usageToday=usage[selectedDate]||{};
   usageList.innerHTML="";
   Object.keys(usageToday).forEach(code=>{
     let line=`訂房代號${code} 使用了: `;
     let parts=[];
-    Object.keys(usageToday[code]).forEach(name=>{
-      parts.push(`${name}*${usageToday[code][name]}`);
+    itemOrder.forEach(name=>{
+      if(usageToday[code][name]) parts.push(`${name}*${usageToday[code][name]}`);
     });
     line+=parts.join(", ");
     let li=document.createElement("li"); li.textContent=line;
@@ -136,7 +137,7 @@ function loadData(){
 // 使用表單扣庫
 function useForm(){
   let code=document.getElementById("bookingCode").value.trim();
-  if(!code.match(/^\d{4}$/)){ alert("請輸入正確四碼代號"); return; }
+  if(!code){ alert("請輸入訂房代號"); return; }
 
   let data=initDailyInventory(selectedDate);
   let items=data[selectedDate];
@@ -194,4 +195,3 @@ loadData();
 </script>
 </body>
 </html>
-
