@@ -2,7 +2,7 @@
 <html lang="zh-Hant">
 <head>
 <meta charset="UTF-8">
-<title>跨日期固定庫存系統（可修改每日庫存）</title>
+<title>每日代號批量使用明細庫存系統</title>
 <style>
 body{font-family:Arial,sans-serif;background:#f7f7f7;margin:20px;}
 h1,h2{text-align:center;}
@@ -11,21 +11,33 @@ h1,h2{text-align:center;}
 .day:hover{background:#d0e6ff;}
 .selected{background:#4caf50 !important;color:white;font-weight:bold;}
 .inventory,.summary{margin-top:20px;padding:15px;background:white;border-radius:8px;box-shadow:0 0 6px rgba(0,0,0,0.1);}
-li{margin:4px 0;}
+ul{list-style:none;padding:0;}
+li{margin:5px 0;}
+input,button,textarea{padding:4px;margin:2px;width:300px;}
 .out{color:red;font-weight:bold;}
-.download-btn{display:block;margin:15px auto 0;padding:8px 16px;background:#4caf50;color:white;border:none;border-radius:6px;cursor:pointer;}
+.download-btn{display:block;margin:15px auto;padding:8px 16px;background:#4caf50;color:white;border:none;border-radius:6px;cursor:pointer;}
 .download-btn:hover{background:#45a049;}
-select,button,input{padding:4px;margin-left:5px;width:80px;}
-input.qtyInput{width:50px;}
 </style>
 </head>
 <body>
-<h1>📅 跨日期固定庫存系統</h1>
+<h1>📅 每日代號批量使用明細庫存系統</h1>
 <div id="calendar" class="calendar"></div>
 
 <div class="inventory">
 <h2 id="selectedDateTitle"></h2>
+<div>
+<label>訂房代號:</label>
+<input type="text" id="bookingCode" placeholder="四碼代號"><br>
+<label>批量輸入品項數量（格式: 品項:數量, 品項:數量）:</label><br>
+<textarea id="batchInput" rows="2" placeholder="加床:1, 嬰兒床:1, 嬰兒澡盆:2"></textarea><br>
+<button onclick="useBatch()">使用</button>
+</div>
+
+<h3>📦 當日剩餘庫存</h3>
 <ul id="inventoryList"></ul>
+
+<h3>📋 當日使用明細</h3>
+<ul id="usageList"></ul>
 </div>
 
 <div class="summary">
@@ -36,10 +48,11 @@ input.qtyInput{width:50px;}
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
 const calendarEl=document.getElementById("calendar");
-const inventoryList=document.getElementById("inventoryList");
 const selectedDateTitle=document.getElementById("selectedDateTitle");
-let selectedDate="2025-09-01";
+const inventoryList=document.getElementById("inventoryList");
+const usageList=document.getElementById("usageList");
 
+let selectedDate="2025-09-01";
 const fixedItems=[
   {name:"加床", qty:13},
   {name:"嬰兒床", qty:8},
@@ -51,102 +64,118 @@ const fixedItems=[
 // 初始化每日庫存
 function initDailyInventory(date){
   let data=JSON.parse(localStorage.getItem("inventory"))||{};
+  let usage=JSON.parse(localStorage.getItem("usage"))||{};
   if(!data[date]){
-    data[date]=fixedItems.map(item=>{
-      let code=Math.floor(1000+Math.random()*9000).toString();
-      return {name:item.name, qty:item.qty, code:code};
-    });
+    data[date]=fixedItems.map(item=>({name:item.name, qty:item.qty}));
     localStorage.setItem("inventory",JSON.stringify(data));
   }
+  if(!usage[date]){ usage[date]={}; localStorage.setItem("usage",JSON.stringify(usage)); }
   return data;
 }
 
+// 日曆
 function renderCalendar(){
   const start=new Date("2025-09-01");
   const end=new Date("2025-12-31");
   calendarEl.innerHTML="";
   let date=new Date(start);
   while(date<=end){
-    const isoDate=date.toISOString().split("T")[0];
+    const iso=date.toISOString().split("T")[0];
     const div=document.createElement("div");
     div.className="day";
     div.innerText=`${date.getMonth()+1}/${date.getDate()}`;
-    if(isoDate===selectedDate) div.classList.add("selected");
-    div.onclick=()=>{selectedDate=isoDate;renderCalendar();loadInventory();};
+    if(iso===selectedDate) div.classList.add("selected");
+    div.onclick=()=>{selectedDate=iso;renderCalendar();loadData();};
     calendarEl.appendChild(div);
     date.setDate(date.getDate()+1);
   }
 }
 
-function loadInventory(){
-  selectedDateTitle.innerText=`📦 ${selectedDate} 的庫存`;
+// 載入資料
+function loadData(){
+  selectedDateTitle.innerText=`📦 ${selectedDate} 庫存`;
   let data=initDailyInventory(selectedDate);
   let items=data[selectedDate];
+
+  // 顯示庫存
   inventoryList.innerHTML="";
-  items.forEach((item,index)=>{
+  items.forEach(it=>{
     let li=document.createElement("li");
-    li.innerHTML=`
-      ${item.name} - 剩餘 
-      <input type="number" class="qtyInput" id="qty${index}" value="${item.qty}" min="0">
-      - 代號 ${item.code} 
-      ${item.qty>0?
-        `<select id="sel${index}">
-          ${getAvailableCodes(item.name).map(c=>`<option value="${c}">${c}</option>`).join("")}
-        </select>
-        <button onclick="useSelected(${index})">使用1</button>`:
-        '<span class="out">⚠️ 庫存不足</span>'}
-      <button onclick="updateQty(${index})">更新數量</button>
-    `;
+    li.textContent=`${it.name} - 剩餘 ${it.qty}`;
+    if(it.qty<=0){ li.classList.add("out"); li.textContent+=" ⚠️ 庫存不足"; }
     inventoryList.appendChild(li);
+  });
+
+  // 顯示使用明細
+  let usage=JSON.parse(localStorage.getItem("usage"))||{};
+  let usageToday=usage[selectedDate]||{};
+  usageList.innerHTML="";
+  Object.keys(usageToday).forEach(code=>{
+    let line=`訂房代號${code} 使用了: `;
+    let parts=[];
+    Object.keys(usageToday[code]).forEach(name=>{
+      parts.push(`${name}*${usageToday[code][name]}`);
+    });
+    line+=parts.join(", ");
+    let li=document.createElement("li"); li.textContent=line;
+    usageList.appendChild(li);
   });
 }
 
-// 取得當天該品項可用代號
-function getAvailableCodes(name){
-  let data=JSON.parse(localStorage.getItem("inventory"))||{};
-  return (data[selectedDate]||[]).filter(x=>x.name===name && x.qty>0).map(x=>x.code);
-}
+// 批量使用
+function useBatch(){
+  let code=document.getElementById("bookingCode").value.trim();
+  let batch=document.getElementById("batchInput").value.trim();
+  if(!code.match(/^\d{4}$/)){ alert("請輸入正確四碼代號"); return; }
+  if(!batch){ alert("請輸入品項數量"); return; }
 
-// 使用下拉選擇代號扣庫
-function useSelected(index){
-  let data=JSON.parse(localStorage.getItem("inventory"))||{};
-  let select=document.getElementById(`sel${index}`);
-  if(!select) return;
-  let code=select.value;
-  let item=data[selectedDate].find(x=>x.code===code);
-  if(item && item.qty>0) item.qty--;
-  localStorage.setItem("inventory",JSON.stringify(data));
-  loadInventory();
-}
+  let data=initDailyInventory(selectedDate);
+  let items=data[selectedDate];
+  let usage=JSON.parse(localStorage.getItem("usage"))||{};
+  if(!usage[selectedDate]) usage[selectedDate]={};
+  if(!usage[selectedDate][code]) usage[selectedDate][code]={};
 
-// 更新每日庫存數量
-function updateQty(index){
-  let data=JSON.parse(localStorage.getItem("inventory"))||{};
-  let input=document.getElementById(`qty${index}`);
-  let val=parseInt(input.value);
-  if(isNaN(val)||val<0) return alert("請輸入正確數量");
-  data[selectedDate][index].qty=val;
+  let entries=batch.split(",").map(s=>s.trim());
+  for(let e of entries){
+    let [name,val]=e.split(":").map(s=>s.trim());
+    let qty=parseInt(val);
+    if(isNaN(qty)||qty<1){ alert("格式錯誤或數量不正確"); return; }
+    let target=items.find(it=>it.name===name);
+    if(!target){ alert(`品項 ${name} 不存在`); return; }
+    if(target.qty<qty){ alert(`庫存不足: ${name}`); return; }
+
+    target.qty-=qty;
+    if(!usage[selectedDate][code][name]) usage[selectedDate][code][name]=0;
+    usage[selectedDate][code][name]+=qty;
+  }
+
   localStorage.setItem("inventory",JSON.stringify(data));
-  loadInventory();
+  localStorage.setItem("usage",JSON.stringify(usage));
+  document.getElementById("batchInput").value="";
+  loadData();
 }
 
 // 匯出 Excel
 function downloadExcel(){
-  let data=JSON.parse(localStorage.getItem("inventory"))||{};
-  let detailSheetData=[["日期","品項","數量","訂房代號"]];
+  let data=JSON.parse(localStorage.getItem("usage"))||{};
+  let rows=[["日期","訂房代號","品項","數量"]];
   Object.keys(data).sort().forEach(date=>{
-    data[date].forEach(item=>{
-      detailSheetData.push([date,item.name,item.qty,item.code]);
+    let day=data[date];
+    Object.keys(day).forEach(code=>{
+      let items=day[code];
+      Object.keys(items).forEach(name=>{
+        rows.push([date,code,name,items[name]]);
+      });
     });
   });
-  let ws=XLSX.utils.aoa_to_sheet(detailSheetData);
+  let ws=XLSX.utils.aoa_to_sheet(rows);
   let wb=XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb,ws,"每日明細");
-  XLSX.writeFile(wb,"庫存報表.xlsx");
+  XLSX.utils.book_append_sheet(wb,ws,"每日使用明細");
+  XLSX.writeFile(wb,"每日使用明細.xlsx");
 }
 
 renderCalendar();
-loadInventory();
+loadData();
 </script>
 </body>
 </html>
