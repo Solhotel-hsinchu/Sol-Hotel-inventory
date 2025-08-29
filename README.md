@@ -2,7 +2,7 @@
 <html lang="zh-Hant">
 <head>
 <meta charset="UTF-8">
-<title>每日代號批量使用明細庫存系統</title>
+<title>每日代號表單化使用庫存系統</title>
 <style>
 body{font-family:Arial,sans-serif;background:#f7f7f7;margin:20px;}
 h1,h2{text-align:center;}
@@ -13,25 +13,26 @@ h1,h2{text-align:center;}
 .inventory,.summary{margin-top:20px;padding:15px;background:white;border-radius:8px;box-shadow:0 0 6px rgba(0,0,0,0.1);}
 ul{list-style:none;padding:0;}
 li{margin:5px 0;}
-input,button,textarea{padding:4px;margin:2px;width:300px;}
+input,button{padding:4px;margin:2px;width:60px;}
 .out{color:red;font-weight:bold;}
 .download-btn{display:block;margin:15px auto;padding:8px 16px;background:#4caf50;color:white;border:none;border-radius:6px;cursor:pointer;}
 .download-btn:hover{background:#45a049;}
+.form-item{margin:5px 0;}
 </style>
 </head>
 <body>
-<h1>📅 每日代號批量使用明細庫存系統</h1>
+<h1>📅 每日代號表單化使用庫存系統</h1>
 <div id="calendar" class="calendar"></div>
 
 <div class="inventory">
 <h2 id="selectedDateTitle"></h2>
+
 <div>
 <label>訂房代號:</label>
-<input type="text" id="bookingCode" placeholder="四碼代號"><br>
-<label>批量輸入品項數量（格式: 品項:數量, 品項:數量）:</label><br>
-<textarea id="batchInput" rows="2" placeholder="加床:1, 嬰兒床:1, 嬰兒澡盆:2"></textarea><br>
-<button onclick="useBatch()">使用</button>
+<input type="text" id="bookingCode" placeholder="四碼代號">
 </div>
+<div id="itemInputs"></div>
+<button onclick="useForm()">使用</button>
 
 <h3>📦 當日剩餘庫存</h3>
 <ul id="inventoryList"></ul>
@@ -51,6 +52,7 @@ const calendarEl=document.getElementById("calendar");
 const selectedDateTitle=document.getElementById("selectedDateTitle");
 const inventoryList=document.getElementById("inventoryList");
 const usageList=document.getElementById("usageList");
+const itemInputsDiv=document.getElementById("itemInputs");
 
 let selectedDate="2025-09-01";
 const fixedItems=[
@@ -97,6 +99,15 @@ function loadData(){
   let data=initDailyInventory(selectedDate);
   let items=data[selectedDate];
 
+  // 生成每個品項輸入框
+  itemInputsDiv.innerHTML="";
+  items.forEach((it,index)=>{
+    let div=document.createElement("div");
+    div.className="form-item";
+    div.innerHTML=`${it.name} (剩餘 ${it.qty}): <input type="number" min="0" id="item${index}" value="0">`;
+    itemInputsDiv.appendChild(div);
+  });
+
   // 顯示庫存
   inventoryList.innerHTML="";
   items.forEach(it=>{
@@ -122,12 +133,10 @@ function loadData(){
   });
 }
 
-// 批量使用
-function useBatch(){
+// 使用表單扣庫
+function useForm(){
   let code=document.getElementById("bookingCode").value.trim();
-  let batch=document.getElementById("batchInput").value.trim();
   if(!code.match(/^\d{4}$/)){ alert("請輸入正確四碼代號"); return; }
-  if(!batch){ alert("請輸入品項數量"); return; }
 
   let data=initDailyInventory(selectedDate);
   let items=data[selectedDate];
@@ -135,23 +144,29 @@ function useBatch(){
   if(!usage[selectedDate]) usage[selectedDate]={};
   if(!usage[selectedDate][code]) usage[selectedDate][code]={};
 
-  let entries=batch.split(",").map(s=>s.trim());
-  for(let e of entries){
-    let [name,val]=e.split(":").map(s=>s.trim());
-    let qty=parseInt(val);
-    if(isNaN(qty)||qty<1){ alert("格式錯誤或數量不正確"); return; }
-    let target=items.find(it=>it.name===name);
-    if(!target){ alert(`品項 ${name} 不存在`); return; }
-    if(target.qty<qty){ alert(`庫存不足: ${name}`); return; }
+  // 檢查庫存是否足夠
+  for(let i=0;i<items.length;i++){
+    let val=parseInt(document.getElementById(`item${i}`).value);
+    if(isNaN(val)||val<0){ alert("請輸入正確數量"); return; }
+    if(val>items[i].qty){ alert(`庫存不足: ${items[i].name}`); return; }
+  }
 
-    target.qty-=qty;
-    if(!usage[selectedDate][code][name]) usage[selectedDate][code][name]=0;
-    usage[selectedDate][code][name]+=qty;
+  // 扣庫並記錄使用明細
+  for(let i=0;i<items.length;i++){
+    let val=parseInt(document.getElementById(`item${i}`).value);
+    if(val>0){
+      items[i].qty-=val;
+      if(!usage[selectedDate][code][items[i].name]) usage[selectedDate][code][items[i].name]=0;
+      usage[selectedDate][code][items[i].name]+=val;
+    }
   }
 
   localStorage.setItem("inventory",JSON.stringify(data));
   localStorage.setItem("usage",JSON.stringify(usage));
-  document.getElementById("batchInput").value="";
+
+  // 清空輸入框
+  for(let i=0;i<items.length;i++) document.getElementById(`item${i}`).value=0;
+
   loadData();
 }
 
@@ -179,3 +194,4 @@ loadData();
 </script>
 </body>
 </html>
+
