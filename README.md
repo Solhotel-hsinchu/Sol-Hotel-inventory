@@ -5,7 +5,7 @@
 <title>每日代號表單化庫存系統</title>
 <style>
 body{font-family:Arial,sans-serif;background:#f7f7f7;margin:20px;}
-h1,h2{text-align:center;}
+h1,h2,h3{text-align:center;margin:5px 0;}
 .calendar{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;margin-bottom:20px;}
 .day{background:#fff;padding:10px;text-align:center;cursor:pointer;border:1px solid #ddd;border-radius:6px;}
 .day:hover{background:#d0e6ff;}
@@ -22,7 +22,7 @@ input,button{padding:4px;margin:2px;width:60px;}
 </head>
 <body>
 <h1>📅 每日代號表單化庫存系統</h1>
-<div id="calendar" class="calendar"></div>
+<div id="calendar"></div>
 
 <div class="inventory">
 <h2 id="selectedDateTitle"></h2>
@@ -76,20 +76,41 @@ function initDailyInventory(date){
   return data;
 }
 
-// 日曆
+// 日曆（按月份分開）
 function renderCalendar(){
   const start=new Date("2025-09-01");
   const end=new Date("2025-12-31");
   calendarEl.innerHTML="";
+
+  let currentMonth=-1;
+  let monthContainer=null;
+
   let date=new Date(start);
   while(date<=end){
     const iso=date.toISOString().split("T")[0];
+    const month=date.getMonth();
+    const year=date.getFullYear();
+
+    // 每個月新容器
+    if(month!==currentMonth){
+      currentMonth=month;
+      const monthTitle=document.createElement("h3");
+      monthTitle.innerText=`${year} 年 ${month+1} 月`;
+      calendarEl.appendChild(monthTitle);
+
+      monthContainer=document.createElement("div");
+      monthContainer.className="calendar";
+      calendarEl.appendChild(monthContainer);
+    }
+
+    // 每天格子
     const div=document.createElement("div");
     div.className="day";
-    div.innerText=`${date.getMonth()+1}/${date.getDate()}`;
+    div.innerText=`${date.getDate()}`;
     if(iso===selectedDate) div.classList.add("selected");
-    div.onclick=()=>{selectedDate=iso;renderCalendar();loadData();};
-    calendarEl.appendChild(div);
+    div.onclick=()=>{selectedDate=iso; loadData(); renderCalendar();};
+    monthContainer.appendChild(div);
+
     date.setDate(date.getDate()+1);
   }
 }
